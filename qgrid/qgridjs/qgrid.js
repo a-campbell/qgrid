@@ -72,7 +72,7 @@ define([
 
     var row_count = 0;
     _.each(this.data_frame, function (cur_row, key, list) {
-      cur_row.slick_grid_id = "row" + row_count;
+      cur_row.id = "row" + row_count;
       row_count++;
       this.row_data.push(cur_row);
       this.filter_list.forEach(function(cur_filter){
@@ -90,7 +90,7 @@ define([
     this.data_view.beginUpdate();
     var sort_comparer = this.get_sort_comparer(this.sort_field, this.sort_ascending)
     this.data_view.sort(sort_comparer, this.sort_ascending);
-    this.data_view.setItems(this.row_data, 'slick_grid_id');
+    this.data_view.setItems(this.row_data);
     this.data_view.setFilter($.proxy(this.include_row, this));
     this.data_view.endUpdate();
 
@@ -155,6 +155,8 @@ define([
 //    else {
 //      this.tab_elem.find(".clear-filters").hide();
 //    }
+// THIS IS WHERE THE FILTER SHOULD GET PASSED BACK TO THE MODEL?
+    // console.log(this.filter_list)
 
     this.apply_filters(exclude_this_filter ? e.target : null)
   }
@@ -173,6 +175,20 @@ define([
         cur_filter.handle_filtering_done();
       }
     }
+
+  }
+
+  QGrid.prototype.get_filters = function(){
+    // only get changed or active filters
+    var active_filters = [];
+    for (var i=0; i < this.filter_list.length; i++){
+      var cur_filter = this.filter_list[i];
+      if (cur_filter.is_active()){
+        active_filters.push(cur_filter);
+      }
+    }
+
+    return active_filters;
   }
 
   QGrid.prototype.include_row = function(item, args){

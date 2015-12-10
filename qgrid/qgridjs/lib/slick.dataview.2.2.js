@@ -86,6 +86,7 @@
     var onRowCountChanged = new Slick.Event();
     var onRowsChanged = new Slick.Event();
     var onPagingInfoChanged = new Slick.Event();
+    // var onFilterChanged = new Slick.Event();
 
     options = $.extend(true, {}, defaults, options);
 
@@ -105,6 +106,11 @@
 
     function setFilterArgs(args) {
       filterArgs = args;
+    }
+
+    function getFilterArgs(){
+      // return filterArgs
+      return filterArgs
     }
 
     function updateIdxById(startingIndex) {
@@ -857,6 +863,8 @@
       prevRefreshHints = refreshHints;
       refreshHints = {};
 
+      // trigger(self.onFilterChanged, {rows: getSelectedRows()}, e);
+
       if (totalRowsBefore != totalRows) {
         onPagingInfoChanged.notify(getPagingInfo(), null, self);
       }
@@ -1019,6 +1027,7 @@
       "deleteItem": deleteItem,
       "syncGridSelection": syncGridSelection,
       "syncGridCellCssStyles": syncGridCellCssStyles,
+      "getFilterArgs": getFilterArgs,
 
       // data provider methods
       "getLength": getLength,

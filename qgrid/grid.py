@@ -10,11 +10,13 @@ try:
     from ipywidgets import widgets
 except ImportError:
     from IPython.html import widgets
-from IPython.display import display, Javascript
+from IPython.display import display, Javascript, clear_output
+
+
 try:
-    from traitlets import Unicode, Instance, Bool, Integer
+    from traitlets import Unicode, Instance, Bool, Integer, Dict
 except ImportError:
-    from IPython.utils.traitlets import Unicode, Instance, Bool, Integer
+    from IPython.utils.traitlets import Unicode, Instance, Bool, Integer, Dict
 
 
 def template_contents(filename):
@@ -117,8 +119,8 @@ def set_grid_option(optname, optvalue):
     """
     self._grid_options[optname] = optvalue
 
-def show_grid(data_frame, remote_js=None, precision=None, grid_options=None,
-              show_toolbar=False):
+def show_grid(data, remote_js=None, precision=None, grid_options=None,
+              show_toolbar=False, call_function_on_row_data=None):
     """
     Main entry point for rendering DataFrames as SlickGrids.
 
@@ -180,12 +182,11 @@ def show_grid(data_frame, remote_js=None, precision=None, grid_options=None,
             raise TypeError(
                 "grid_options must be dict, not %s" % type(grid_options)
             )
+    data_obj = data
 
-    # create a visualization for the dataframe
-    grid = QGridWidget(df=data_frame, precision=precision,
+    grid = QGridWidget(df=data_obj, precision=precision,
                        grid_options=json.dumps(grid_options),
                        remote_js=remote_js)
-    grid.update_table()
 
     if show_toolbar:
         add_row = widgets.Button(description="Add Row")
@@ -197,9 +198,20 @@ def show_grid(data_frame, remote_js=None, precision=None, grid_options=None,
         export = widgets.Button(description="Export")
         export.on_click(grid.export)
 
-        display(widgets.HBox((add_row, rem_row, export)), grid)
+        get_f = widgets.Button(description='Get Filters')
+        get_f.on_click(grid.get_filters)
+
+        if call_function_on_row_data is not None:
+            run_function = widgets.Button(description=call_function_on_row_data[0])
+            grid.user_function = call_function_on_row_data[1]
+            run_function.on_click(grid.get_data_and_call_function)
+            display(widgets.HBox((add_row, rem_row, export, run_function, get_f)), grid)
+
+        else:
+            display(widgets.HBox((add_row, rem_row, export)), grid)
     else:
-        display(grid)
+        # display(grid)
+        return grid
 
 
 class QGridWidget(widgets.DOMWidget):
@@ -211,25 +223,21 @@ class QGridWidget(widgets.DOMWidget):
     _cdn_base_url = Unicode("/nbextensions/qgridjs", sync=True)
     _multi_index = Bool(False)
 
+    # bz_data = Instance(bz.expr.expressions.Slice)
     df = Instance(pd.DataFrame)
-    precision = Integer(6)
+    precision = Integer()
     grid_options = Unicode('', sync=True)
     remote_js = Bool(True)
+    selected_row = Dict({}, sync=True)
+    selected_id = Integer(0, sync=True)
 
-    def update_table(self):
+    def _df_changed(self):
         """Build the Data Table for the DataFrame."""
 
-        df = self.df.copy()
-
         # register a callback for custom messages
+        df = self.df
         self.on_msg(self._handle_qgrid_msg)
 
-        if type(df.index) == pd.core.index.MultiIndex:
-            df.reset_index(inplace=True)
-            self._multi_index = True
-        else:
-            df.insert(0, df.index.name, df.index)
-            self._multi_index = False
 
         if not df.index.name:
             df.index.name = 'Index'
@@ -251,7 +259,7 @@ class QGridWidget(widgets.DOMWidget):
                 # https://github.com/pydata/pandas/issues/10778
                 df[col_name] = df[col_name].astype(str)
                 column_types.append(column_type)
-                continue
+                break
             column_type = {'field': col_name}
             for type_name, type_codes in tc.items():
                 if dtype.kind in type_codes:
@@ -301,6 +309,23 @@ class QGridWidget(widgets.DOMWidget):
             return
         self.send({'type': 'remove_row'})
 
+    def get_data_and_call_function(self, value=None):
+        self.send({'type': 'request_row_data'})
+
+    def get_filters(self, value=None):
+        self.send({'type': 'get_filters'})
+
+    def update_grade(self, algo_id, grader, grade):
+        row_ix = self.df[self.df.algo_id == algo_id].index.values[0]
+        col_ix = self.df.columns.get_loc(grader)
+        msg = {
+            'type': 'grade_cell_updated',
+            'row_ix': row_ix,
+            'col_ix': col_ix,
+            'new_val': grade,
+        }
+        self.send(msg)
+
     def _handle_qgrid_msg(self, widget, content, buffers=None):
         """Handle incoming messages from the QGridView"""
         if 'type' not in content:
@@ -314,9 +339,69 @@ class QGridWidget(widgets.DOMWidget):
                                   content['column'], content['value'])
             except ValueError:
                 pass
+        elif content['type'] == 'row_data':
+            row_data = content['data']
+            # display(self.user_function(row_data))
+            return row_data
+
+        elif content['type'] == 'get_filters':
+            self.apply_filters_to_data(content['data'])
+            print content['data']
+
+        elif content['type'] == 'selected_row_change':
+            row_data = content['data']
+            self.selected_id = row_data['algo_id']
+            self.selected_row = row_data
+
+
+    # eventually, we can send min and max values to the slider view
+    # by updating
+
+    def apply_filters_to_data(self, filters):
+        for filt in filters:
+            col = filt['column']['field']
+            print filt.keys()
+            print filt
+            if 'slider_elem' in filt.keys():
+                min_val = filt.get('filter_value_min')
+                if min_val is not None:
+                    self.bz_data = self.bz_data[self.bz_data[col] > float(min_val)][0:]
+
+                max_val = filt.get('filter_value_max')
+                if max_val is not None:
+                    self.bz_data = self.bz_data[self.bz_data[col] < float(max_val)][0:]
+            
+
+        self.update_view_after_filter()
+
+    def update_view_after_filter(self):
+
+        # trigger an update of the df json
+        self._bz_data_changed()
+        self.remote_js = True
+        div_id = str(uuid.uuid4())
+        grid_options = json.loads(self.grid_options)
+        grid_options['editable'] = False
+
+        raw_html = SLICK_GRID_CSS.format(
+            div_id=div_id,
+            cdn_base_url=self._cdn_base_url,
+        )
+        raw_js = SLICK_GRID_JS.format(
+            cdn_base_url=self._cdn_base_url,
+            div_id=div_id,
+            data_frame_json=self._df_json,
+            column_types_json=self._column_types_json,
+            options_json=json.dumps(grid_options),
+        )
+        clear_output()
+        display_html(raw_html, raw=True)
+        display_javascript(raw_js, raw=True)
+
 
     def export(self, value=None):
-        self.update_table()
+        # trigger an update of the df json
+        self._bz_data_changed()
         self.remote_js = True
         div_id = str(uuid.uuid4())
         grid_options = json.loads(self.grid_options)

@@ -1271,6 +1271,11 @@ if (typeof Slick === "undefined") {
       return data;
     }
 
+    // function getFilters(){
+    //   return filters
+
+    // }
+
     function getDataLength() {
       if (data.getLength) {
         return data.getLength();
@@ -3371,6 +3376,7 @@ if (typeof Slick === "undefined") {
       "onDragEnd": new Slick.Event(),
       "onSelectedRowsChanged": new Slick.Event(),
       "onCellCssStylesChanged": new Slick.Event(),
+      // "onFilterChange": new Slick.Event(),
 
       // Methods
       "registerPlugin": registerPlugin,

@@ -133,12 +133,29 @@ define([path + "widgets/js/widget", path + "widgets/js/manager"], function(widge
                 that.send(msg);
             });
 
+            sgrid.onMouseDown.subscribe(function(e, args) {
+                var row_data = grid.row_data[args.row];
+                var msg = {'data': row_data, 'type': 'selected_row_change'};
+                that.send(msg);
+            });
+
+            // grid.onFilterChange.subscribe(function(e, args){
+            //     var payload = 
+            //     var msg = {'type': 'filter_change', 'payload': payload}
+            //     that.send(msg)
+            // });
+
+
+            console.log("updated")
             // subscribe to incoming messages from the QGridWidget
             this.model.on('msg:custom', this.handleMsg, this);
+            
         },
         
         /**
          * Handle messages from the QGridWidget.
+         could we add something here that just tells us what the selected row is?
+
          */
         handleMsg: function(msg) {
             var sgrid = grid.slick_grid;
@@ -160,6 +177,22 @@ define([path + "widgets/js/widget", path + "widgets/js/manager"], function(widge
                 dd.refresh();
                 this.updateSize();
                 this.send(msg);
+            } else if (msg.type === 'request_row_data'){
+                var cell = sgrid.getActiveCell();
+                if (!cell) {
+                    console.log('no cell');
+                    return;
+                }
+                var data = sgrid.getData().getItem(cell.row);
+                msg = {'type': 'row_data', 'data': data};
+                this.send(msg);
+            } else if (msg.type == 'get_filters'){
+                var args = grid.get_filters();
+                msg = {'type': 'get_filters', 'data': args};
+                this.send(msg);
+            } else if (msg.type == 'grade_cell_updated'){
+                var cell = sgrid.getCellNode(msg.row_ix, msg.col_ix);
+                cell.innerText = msg.new_val;
             }
         },
 
